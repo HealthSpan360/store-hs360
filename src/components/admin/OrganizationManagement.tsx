@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Building2, Plus, Pencil, Trash2, Search, MapPin, Users, Mail, Phone, AlertCircle, CheckCircle, Eye, Archive, ArrowLeft, Settings, DollarSign, Save, RotateCcw, UserCheck, Home } from 'lucide-react';
 import { multiTenantService } from '@/services/multiTenant';
 import { supabase } from '@/services/supabase';
+import { ENV } from '@/config/env';
 import { softDeleteService } from '@/services/softDeleteService';
 import { useAuth } from '@/contexts/AuthContext';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
@@ -202,7 +203,7 @@ const OrganizationManagement: React.FC = () => {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
               const response = await fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin-user`,
+                `${ENV.SUPABASE_URL}/functions/v1/create-admin-user`,
                 {
                   method: 'POST',
                   headers: {

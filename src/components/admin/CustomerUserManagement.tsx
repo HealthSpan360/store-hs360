@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Plus, Pencil, Trash2, Search, User, Mail, Shield, Clock, CheckCircle, AlertCircle, Key } from 'lucide-react';
 import { supabase } from '@/services/supabase';
+import { ENV } from '@/config/env';
 import { multiTenantService } from '@/services/multiTenant';
 import type { Profile, UserOrganizationRole } from '@/services/supabase';
 
@@ -89,7 +90,7 @@ const CustomerUserManagement: React.FC<CustomerUserManagementProps> = ({ organiz
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin-user`,
+        `${ENV.SUPABASE_URL}/functions/v1/create-admin-user`,
         {
           method: 'POST',
           headers: {

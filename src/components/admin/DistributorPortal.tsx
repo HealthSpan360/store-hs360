@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/services/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { ENV } from '@/config/env';
 import AddressManagement from './AddressManagement';
 import PricingManagement from './PricingManagement';
 import CustomerUserManagement from './CustomerUserManagement';
@@ -276,7 +277,7 @@ const DistributorPortal: React.FC<DistributorPortalProps> = ({ view }) => {
           if (session) {
             const nameParts = (newCustomer.contact_name || '').trim().split(/\s+/);
             const response = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin-user`,
+              `${ENV.SUPABASE_URL}/functions/v1/create-admin-user`,
               {
                 method: 'POST',
                 headers: {
@@ -370,7 +371,12 @@ const DistributorPortal: React.FC<DistributorPortalProps> = ({ view }) => {
           is_active: true,
           notes: newSalesRep.notes || null,
         }]);
-      if (insertError) throw insertError;
+      if (insertError) {
+        if (insertError.code === '23505') {
+          throw new Error('This sales rep is already assigned to this distributor');
+        }
+        throw insertError;
+      }
       setSuccess('Sales rep added');
       setShowAddSalesRep(false);
       setNewSalesRep({
@@ -413,7 +419,7 @@ const DistributorPortal: React.FC<DistributorPortalProps> = ({ view }) => {
       if (!session) throw new Error('Not authenticated');
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin-user`,
+        `${ENV.SUPABASE_URL}/functions/v1/create-admin-user`,
         {
           method: 'POST',
           headers: {
@@ -548,7 +554,7 @@ const DistributorPortal: React.FC<DistributorPortalProps> = ({ view }) => {
       if (!session) throw new Error('Not authenticated');
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin-user`,
+        `${ENV.SUPABASE_URL}/functions/v1/create-admin-user`,
         {
           method: 'POST',
           headers: {

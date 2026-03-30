@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/services/supabase';
 import { softDeleteService } from '@/services/softDeleteService';
 import { useAuth } from '@/contexts/AuthContext';
+import { ENV } from '@/config/env';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import DistributorPricingImport from './DistributorPricingImport';
 import WholesalePricingGrid from './WholesalePricingGrid';
@@ -211,6 +212,13 @@ interface RepCustomerLink {
 
 type DistSubTab = 'sales_reps' | 'commission_rules' | 'wholesale_pricing' | 'customers';
 
+/** Extract a human-readable message from Supabase PostgrestError or standard Error */
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) return String((err as { message: string }).message);
+  return fallback;
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 const DistributorManagement: React.FC = () => {
@@ -390,7 +398,7 @@ const DistributorManagement: React.FC = () => {
       setSalesReps(salesRepsRes.data || []);
       setDistributorSalesReps(distSalesRepsRes.data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+      setError(getErrorMessage(err, 'Failed to load data'));
     } finally {
       setLoading(false);
     }
@@ -413,7 +421,7 @@ const DistributorManagement: React.FC = () => {
         if (!session) throw new Error('No active session');
 
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin-user`,
+          `${ENV.SUPABASE_URL}/functions/v1/create-admin-user`,
           {
             method: 'POST',
             headers: {
@@ -491,7 +499,7 @@ const DistributorManagement: React.FC = () => {
       setNewUserEmail('');
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create distributor');
+      setError(getErrorMessage(err, 'Failed to create distributor'));
     } finally {
       setIsCreatingUser(false);
     }
@@ -510,7 +518,7 @@ const DistributorManagement: React.FC = () => {
       if (!session) throw new Error('No active session');
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin-user`,
+        `${ENV.SUPABASE_URL}/functions/v1/create-admin-user`,
         {
           method: 'POST',
           headers: {
@@ -568,7 +576,7 @@ const DistributorManagement: React.FC = () => {
 
       setSuccess('User created and selected');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create user');
+      setError(getErrorMessage(err, 'Failed to create user'));
     } finally {
       setIsCreatingUser(false);
     }
@@ -589,7 +597,7 @@ const DistributorManagement: React.FC = () => {
       let userAlreadyExisted = false;
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin-user`,
+        `${ENV.SUPABASE_URL}/functions/v1/create-admin-user`,
         {
           method: 'POST',
           headers: {
@@ -656,7 +664,7 @@ const DistributorManagement: React.FC = () => {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create user');
+      setError(getErrorMessage(err, 'Failed to create user'));
     } finally {
       setIsCreatingSalesRepUser(false);
     }
@@ -689,7 +697,7 @@ const DistributorManagement: React.FC = () => {
       setEditingDistributor(null);
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update distributor');
+      setError(getErrorMessage(err, 'Failed to update distributor'));
     }
   };
 
@@ -711,7 +719,7 @@ const DistributorManagement: React.FC = () => {
       setSuccess('Distributor deleted');
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete distributor');
+      setError(getErrorMessage(err, 'Failed to delete distributor'));
     } finally {
       setIsDeleting(false);
       setShowDeleteModal(false);
@@ -745,7 +753,12 @@ const DistributorManagement: React.FC = () => {
       };
       const { error: insertError } = await supabase.from('distributor_sales_reps').insert(payload);
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        if (insertError.code === '23505') {
+          throw new Error('This sales rep is already assigned to this distributor');
+        }
+        throw insertError;
+      }
 
       setSuccess('Sales rep added to distributor');
       setShowAddSalesRep(false);
@@ -758,7 +771,7 @@ const DistributorManagement: React.FC = () => {
       });
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add sales rep');
+      setError(getErrorMessage(err, 'Failed to add sales rep'));
     }
   };
 
@@ -771,7 +784,7 @@ const DistributorManagement: React.FC = () => {
       setSuccess('Sales rep removed');
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove sales rep');
+      setError(getErrorMessage(err, 'Failed to remove sales rep'));
     }
   };
 
@@ -819,7 +832,7 @@ const DistributorManagement: React.FC = () => {
       });
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add commission rule');
+      setError(getErrorMessage(err, 'Failed to add commission rule'));
     }
   };
 
@@ -832,7 +845,7 @@ const DistributorManagement: React.FC = () => {
       setSuccess('Commission rule removed');
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove commission rule');
+      setError(getErrorMessage(err, 'Failed to remove commission rule'));
     }
   };
 
@@ -857,7 +870,7 @@ const DistributorManagement: React.FC = () => {
       setNewPricing({ product_id: '', wholesale_price: 0, notes: '' });
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add wholesale price');
+      setError(getErrorMessage(err, 'Failed to add wholesale price'));
     }
   };
 
@@ -952,7 +965,7 @@ const DistributorManagement: React.FC = () => {
       setSuccess(errors.length > 0 ? `${msg}. Skipped: ${errors.join('; ')}` : msg);
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload CSV');
+      setError(getErrorMessage(err, 'Failed to upload CSV'));
     }
   };
 
@@ -965,7 +978,7 @@ const DistributorManagement: React.FC = () => {
       setSuccess('Wholesale price removed');
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove wholesale price');
+      setError(getErrorMessage(err, 'Failed to remove wholesale price'));
     }
   };
 
@@ -986,7 +999,7 @@ const DistributorManagement: React.FC = () => {
       setSuccess('Customer organization added');
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add customer organization');
+      setError(getErrorMessage(err, 'Failed to add customer organization'));
     }
   };
 
@@ -1005,7 +1018,7 @@ const DistributorManagement: React.FC = () => {
       setSuccess('Customer assigned to rep');
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to assign customer to rep');
+      setError(getErrorMessage(err, 'Failed to assign customer to rep'));
     }
   };
 
@@ -1018,7 +1031,7 @@ const DistributorManagement: React.FC = () => {
       setSuccess('Customer removed from rep');
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove customer from rep');
+      setError(getErrorMessage(err, 'Failed to remove customer from rep'));
     }
   };
 
@@ -1031,7 +1044,7 @@ const DistributorManagement: React.FC = () => {
       setSuccess('Customer organization removed');
       fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove customer organization');
+      setError(getErrorMessage(err, 'Failed to remove customer organization'));
     }
   };
 

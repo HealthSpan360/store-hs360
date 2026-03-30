@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Mail, Shield, Clock, CheckCircle, Pencil, Trash2, Search, Filter, Key, AlertCircle, Save, RotateCcw, Plus, XCircle, Eye, Building2, FileText, Info, Send } from 'lucide-react';
 import { supabase } from '@/services/supabase';
 import type { Profile } from '@/services/supabase';
+import { ENV } from '@/config/env';
 import { useAuth } from '@/contexts/AuthContext';
 import { activityLogService } from '@/services/activityLog';
 import { emailService } from '@/services/emailService';
@@ -544,7 +545,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin-user`,
+        `${ENV.SUPABASE_URL}/functions/v1/create-admin-user`,
         {
           method: 'POST',
           headers: {
