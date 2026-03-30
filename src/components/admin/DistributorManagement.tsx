@@ -299,6 +299,8 @@ const DistributorManagement: React.FC = () => {
   // Inline sales rep user creation state
   const [showCreateSalesRepUser, setShowCreateSalesRepUser] = useState(false);
   const [newSalesRepEmail, setNewSalesRepEmail] = useState('');
+  const [newSalesRepFullName, setNewSalesRepFullName] = useState('');
+  const [newSalesRepPhone, setNewSalesRepPhone] = useState('');
   const [isCreatingSalesRepUser, setIsCreatingSalesRepUser] = useState(false);
 
   const [newDistributorSalesRep, setNewDistributorSalesRep] = useState({
@@ -587,6 +589,10 @@ const DistributorManagement: React.FC = () => {
       setError('Email is required');
       return;
     }
+    if (!newSalesRepFullName.trim()) {
+      setError('Full name is required');
+      return;
+    }
     try {
       setIsCreatingSalesRepUser(true);
       setError(null);
@@ -607,6 +613,8 @@ const DistributorManagement: React.FC = () => {
           body: JSON.stringify({
             email: newSalesRepEmail,
             role: 'sales_rep',
+            fullName: newSalesRepFullName.trim(),
+            phone: newSalesRepPhone.trim() || undefined,
             siteUrl: window.location.origin,
           }),
         }
@@ -627,6 +635,8 @@ const DistributorManagement: React.FC = () => {
       }
 
       setNewSalesRepEmail('');
+      setNewSalesRepFullName('');
+      setNewSalesRepPhone('');
       setShowCreateSalesRepUser(false);
 
       // Re-fetch sales reps to include the new or existing user
@@ -2293,7 +2303,7 @@ const DistributorManagement: React.FC = () => {
         return (
           <Modal
             title={`Add Sales Rep — ${dist?.name ?? ''}`}
-            onClose={() => { setShowAddSalesRep(false); setShowCreateSalesRepUser(false); setNewSalesRepEmail(''); }}
+            onClose={() => { setShowAddSalesRep(false); setShowCreateSalesRepUser(false); setNewSalesRepEmail(''); setNewSalesRepFullName(''); setNewSalesRepPhone(''); }}
           >
             {dist && (
               <div className="mb-4 px-3 py-2 bg-violet-50 border border-violet-100 rounded-lg text-xs text-violet-700">
@@ -2342,18 +2352,34 @@ const DistributorManagement: React.FC = () => {
                         <span className="text-sm font-medium text-purple-700">Create New Sales Rep</span>
                         <button
                           type="button"
-                          onClick={() => { setShowCreateSalesRepUser(false); setNewSalesRepEmail(''); }}
+                          onClick={() => { setShowCreateSalesRepUser(false); setNewSalesRepEmail(''); setNewSalesRepFullName(''); setNewSalesRepPhone(''); }}
                           className="text-gray-400 hover:text-gray-600"
                         >
                           <X className="h-4 w-4" />
                         </button>
                       </div>
                       <input
+                        type="text"
+                        value={newSalesRepFullName}
+                        onChange={(e) => setNewSalesRepFullName(e.target.value)}
+                        className={inputCls}
+                        placeholder="Full name *"
+                        required
+                      />
+                      <input
                         type="email"
                         value={newSalesRepEmail}
                         onChange={(e) => setNewSalesRepEmail(e.target.value)}
                         className={inputCls}
-                        placeholder="Email address"
+                        placeholder="Email address *"
+                        required
+                      />
+                      <input
+                        type="tel"
+                        value={newSalesRepPhone}
+                        onChange={(e) => setNewSalesRepPhone(e.target.value)}
+                        className={inputCls}
+                        placeholder="Phone number"
                       />
                       <div className="flex gap-2">
                         <button
@@ -2366,7 +2392,7 @@ const DistributorManagement: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setShowCreateSalesRepUser(false); setNewSalesRepEmail(''); }}
+                          onClick={() => { setShowCreateSalesRepUser(false); setNewSalesRepEmail(''); setNewSalesRepFullName(''); setNewSalesRepPhone(''); }}
                           className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
                         >
                           Cancel
@@ -2477,7 +2503,7 @@ const DistributorManagement: React.FC = () => {
               <div className="mt-6 flex gap-3 justify-end border-t border-gray-100 pt-4">
                 <button
                   type="button"
-                  onClick={() => { setShowAddSalesRep(false); setShowCreateSalesRepUser(false); setNewSalesRepEmail(''); }}
+                  onClick={() => { setShowAddSalesRep(false); setShowCreateSalesRepUser(false); setNewSalesRepEmail(''); setNewSalesRepFullName(''); setNewSalesRepPhone(''); }}
                   className={cancelBtnCls}
                 >
                   Cancel
