@@ -25,7 +25,7 @@ const CustomerUserManagement: React.FC<CustomerUserManagementProps> = ({ organiz
   const [isEditing, setIsEditing] = useState(false);
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
   const [modalMessage, setModalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [newUserData, setNewUserData] = useState({ email: '', role: 'viewer' as string });
+  const [newUserData, setNewUserData] = useState({ email: '', fullName: '', phone: '', role: 'viewer' as string });
   const [sendingPasswordReset, setSendingPasswordReset] = useState(false);
 
   useEffect(() => {
@@ -100,6 +100,8 @@ const CustomerUserManagement: React.FC<CustomerUserManagementProps> = ({ organiz
           body: JSON.stringify({
             email: newUserData.email,
             role: 'customer',
+            fullName: newUserData.fullName.trim() || undefined,
+            phone: newUserData.phone.trim() || undefined,
             organizationId: organizationId,
             orgRole: newUserData.role,
             siteUrl: window.location.origin,
@@ -121,7 +123,7 @@ const CustomerUserManagement: React.FC<CustomerUserManagementProps> = ({ organiz
       setModalMessage({ type: 'success', text: 'User created — invite email sent!' });
 
       // Reset form
-      setNewUserData({ email: '', role: 'viewer' });
+      setNewUserData({ email: '', fullName: '', phone: '', role: 'viewer' });
 
       // Refresh data
       fetchData();
@@ -439,6 +441,19 @@ const CustomerUserManagement: React.FC<CustomerUserManagementProps> = ({ organiz
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Full Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={newUserData.fullName}
+                          onChange={(e) => setNewUserData({...newUserData, fullName: e.target.value})}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          placeholder="John Smith"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
                           Email Address *
                         </label>
                         <input
@@ -449,7 +464,20 @@ const CustomerUserManagement: React.FC<CustomerUserManagementProps> = ({ organiz
                           placeholder="user@example.com"
                         />
                       </div>
-                      
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Phone Number
+                        </label>
+                        <input
+                          type="tel"
+                          value={newUserData.phone}
+                          onChange={(e) => setNewUserData({...newUserData, phone: e.target.value})}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          placeholder="(555) 555-5555"
+                        />
+                      </div>
+
                       <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
                         An invite email will be sent. The user sets their own password.
                       </p>
@@ -482,7 +510,7 @@ const CustomerUserManagement: React.FC<CustomerUserManagementProps> = ({ organiz
                 <button
                   type="button"
                   onClick={handleCreateUser}
-                  disabled={!newUserData.email}
+                  disabled={!newUserData.email || !newUserData.fullName.trim()}
                   className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-base font-medium text-white hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Create & Send Invite
@@ -491,7 +519,7 @@ const CustomerUserManagement: React.FC<CustomerUserManagementProps> = ({ organiz
                   type="button"
                   onClick={() => {
                     setIsCreateUserModalOpen(false);
-                    setNewUserData({ email: '', role: 'viewer' });
+                    setNewUserData({ email: '', fullName: '', phone: '', role: 'viewer' });
                     setModalMessage(null);
                   }}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
