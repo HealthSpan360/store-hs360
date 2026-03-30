@@ -373,9 +373,23 @@ const DistributorPortal: React.FC<DistributorPortalProps> = ({ view }) => {
         }]);
       if (insertError) {
         if (insertError.code === '23505') {
-          throw new Error('This sales rep is already assigned to this distributor');
+          // Record exists (likely soft-deleted with is_active=false) — reactivate it
+          const { error: updateError } = await supabase
+            .from('distributor_sales_reps')
+            .update({
+              is_active: true,
+              commission_split_type: newSalesRep.commission_split_type,
+              sales_rep_rate: newSalesRep.sales_rep_rate,
+              distributor_override_rate: newSalesRep.commission_split_type === 'fixed_with_override'
+                ? newSalesRep.distributor_override_rate : null,
+              notes: newSalesRep.notes || null,
+            })
+            .eq('distributor_id', distributor.id)
+            .eq('sales_rep_id', newSalesRep.sales_rep_id);
+          if (updateError) throw updateError;
+        } else {
+          throw insertError;
         }
-        throw insertError;
       }
       setSuccess('Sales rep added');
       setShowAddSalesRep(false);
