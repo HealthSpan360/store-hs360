@@ -350,6 +350,11 @@ function AppContent() {
 
   const clearCart = () => {
     setCartItems([]);
+    if (user?.id) {
+      cartService.clearCart(user.id, selectedOrganization?.id).catch(error => {
+        console.error('Error clearing cart from database:', error);
+      });
+    }
   };
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
