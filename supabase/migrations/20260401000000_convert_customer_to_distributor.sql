@@ -1,20 +1,22 @@
 -- Drop any previous version of this function (old profile-based signature)
 DROP FUNCTION IF EXISTS public.convert_customer_to_distributor(uuid, text, text, text, text, numeric, text, text, text, text, text, text, text);
+-- Also drop the current org-based signature so CREATE OR REPLACE works cleanly
+DROP FUNCTION IF EXISTS public.convert_customer_to_distributor(uuid, text, text, uuid, text, text, numeric, text, text, text, text, text, text, text);
 
 -- Migration: convert_customer_to_distributor
 -- Converts a customer organization into a distributor. This:
 --   1. Flips the org's org_type from 'customer' to 'distributor'
---   2. Picks a primary user from the org to become the distributor owner
---   3. Creates a distributors record
---   4. Updates that user's profile role to 'distributor'
---   5. Removes user_organization_roles for the promoted user
---      (other org members are left as-is since they may still be customers)
+--   2. Creates a distributors record
+--   3. If the org has members, picks/uses one as the distributor owner
+--      and promotes their profile role to 'distributor'
+--   4. If the org has NO members, the distributor is created without
+--      a linked profile (admin can assign one later)
 
 CREATE OR REPLACE FUNCTION public.convert_customer_to_distributor(
   p_organization_id uuid,
   p_distributor_name text,
   p_distributor_code text,
-  p_owner_profile_id uuid DEFAULT NULL,      -- if NULL, picks the org admin / first member
+  p_owner_profile_id uuid DEFAULT NULL,      -- if NULL, auto-picks org admin / first member (or none)
   p_commission_type  text DEFAULT 'percent_margin',
   p_pricing_model    text DEFAULT 'margin_split',
   p_commission_rate  numeric DEFAULT NULL,
@@ -35,7 +37,6 @@ DECLARE
   v_org              record;
   v_owner_id         uuid;
   v_distributor_id   uuid;
-  v_member           record;
 BEGIN
   -- ── 1. Validate the organization ──────────────────────────────────────────
   SELECT id, name, org_type, is_active
@@ -56,16 +57,11 @@ BEGIN
     RAISE EXCEPTION 'Distributor code "%" already exists', p_distributor_code;
   END IF;
 
-  -- ── 3. Resolve the owner profile ─────────────────────────────────────────
+  -- ── 3. Resolve the owner profile (optional) ──────────────────────────────
   IF p_owner_profile_id IS NOT NULL THEN
-    -- Verify the supplied owner is a member of this org
-    IF NOT EXISTS (
-      SELECT 1 FROM user_organization_roles
-       WHERE organization_id = p_organization_id
-         AND user_id = p_owner_profile_id
-    ) THEN
-      RAISE EXCEPTION 'Profile % is not a member of organization %',
-        p_owner_profile_id, p_organization_id;
+    -- A specific owner was requested — verify they exist
+    IF NOT EXISTS (SELECT 1 FROM profiles WHERE id = p_owner_profile_id) THEN
+      RAISE EXCEPTION 'Profile % not found', p_owner_profile_id;
     END IF;
     v_owner_id := p_owner_profile_id;
   ELSE
@@ -82,10 +78,7 @@ BEGIN
        END,
        created_at ASC
      LIMIT 1;
-
-    IF v_owner_id IS NULL THEN
-      RAISE EXCEPTION 'Organization "%" has no members to promote', v_org.name;
-    END IF;
+    -- v_owner_id may be NULL here — that's OK, we proceed without an owner
   END IF;
 
   -- ── 4. Update the organization type ───────────────────────────────────────
@@ -109,20 +102,20 @@ BEGIN
   )
   RETURNING id INTO v_distributor_id;
 
-  -- ── 6. Update owner profile role ──────────────────────────────────────────
-  UPDATE profiles
-     SET role = 'distributor',
-         updated_at = now()
-   WHERE id = v_owner_id
-     AND (role IS NULL OR role = 'customer');
+  -- ── 6. If we have an owner, promote their profile and clean up ────────────
+  IF v_owner_id IS NOT NULL THEN
+    UPDATE profiles
+       SET role = 'distributor',
+           updated_at = now()
+     WHERE id = v_owner_id
+       AND (role IS NULL OR role = 'customer');
 
-  -- ── 7. Remove owner from user_organization_roles ─────────────────────────
-  --    (they now access the system as a distributor, not an org member)
-  DELETE FROM user_organization_roles
-   WHERE user_id = v_owner_id
-     AND organization_id = p_organization_id;
+    DELETE FROM user_organization_roles
+     WHERE user_id = v_owner_id
+       AND organization_id = p_organization_id;
+  END IF;
 
-  -- ── 8. Return summary ────────────────────────────────────────────────────
+  -- ── 7. Return summary ────────────────────────────────────────────────────
   RETURN jsonb_build_object(
     'distributor_id', v_distributor_id,
     'owner_profile_id', v_owner_id,
@@ -132,4 +125,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.convert_customer_to_distributor IS
-  'Atomically converts a customer organization into a distributor, creating the distributor record and promoting the primary user.';
+  'Atomically converts a customer organization into a distributor, creating the distributor record and optionally promoting a user as the owner.';
