@@ -1,3 +1,7 @@
+-- Allow distributors to exist without a linked user (owner assigned later)
+ALTER TABLE distributors ALTER COLUMN profile_id DROP NOT NULL;
+ALTER TABLE distributors ALTER COLUMN user_id DROP NOT NULL;
+
 -- Drop any previous version of this function (old profile-based signature)
 DROP FUNCTION IF EXISTS public.convert_customer_to_distributor(uuid, text, text, text, text, numeric, text, text, text, text, text, text, text);
 -- Also drop the current org-based signature so CREATE OR REPLACE works cleanly
