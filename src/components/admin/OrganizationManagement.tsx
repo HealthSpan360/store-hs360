@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Plus, Pencil, Trash2, Search, MapPin, Users, Mail, Phone, AlertCircle, CheckCircle, Eye, Archive, ArrowLeft, Settings, DollarSign, Save, RotateCcw, UserCheck, Home } from 'lucide-react';
+import { Building2, Plus, Pencil, Trash2, Search, MapPin, Users, Mail, Phone, AlertCircle, CheckCircle, Eye, Archive, ArrowLeft, Settings, DollarSign, Save, RotateCcw, UserCheck, Home, ArrowRightLeft } from 'lucide-react';
 import { multiTenantService } from '@/services/multiTenant';
 import { supabase } from '@/services/supabase';
 import { ENV } from '@/config/env';
@@ -9,6 +9,8 @@ import ConfirmDeleteModal from './ConfirmDeleteModal';
 import AddressManagement from './AddressManagement';
 import PricingManagement from './PricingManagement';
 import CustomerUserManagement from './CustomerUserManagement';
+import { convertOrgToDistributor, fetchDistributorCodes, fetchOrgMembers } from '@/services/customerConversionService';
+import { activityLogService } from '@/services/activityLog';
 import type { Organization } from '@/services/supabase';
 
 type SubManagementTab = 'addresses' | 'pricing' | 'users';
@@ -43,6 +45,20 @@ const OrganizationManagement: React.FC = () => {
   const [salesReps, setSalesReps] = useState<SalesRep[]>([]);
   const [createContactUser, setCreateContactUser] = useState(true);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  // Convert to distributor state
+  const [showConvertModal, setShowConvertModal] = useState(false);
+  const [convertOrg, setConvertOrg] = useState<Organization | null>(null);
+  const [isConverting, setIsConverting] = useState(false);
+  const [convertDistName, setConvertDistName] = useState('');
+  const [convertDistCode, setConvertDistCode] = useState('');
+  const [convertCodeManual, setConvertCodeManual] = useState(false);
+  const [convertCommissionType, setConvertCommissionType] = useState('percent_margin');
+  const [convertPricingModel, setConvertPricingModel] = useState('margin_split');
+  const [convertCommissionRate, setConvertCommissionRate] = useState('');
+  const [convertOwnerProfileId, setConvertOwnerProfileId] = useState('');
+  const [convertOrgMembers, setConvertOrgMembers] = useState<{ userId: string; orgRole: string; email: string; fullName: string }[]>([]);
+  const [existingDistCodes, setExistingDistCodes] = useState<string[]>([]);
+  const [convertMessage, setConvertMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     fetchOrganizations();
@@ -105,6 +121,117 @@ const OrganizationManagement: React.FC = () => {
       setSalesReps(data || []);
     } catch (err) {
       console.error('Failed to fetch sales reps:', err);
+    }
+  };
+
+  // ── Convert to Distributor ─────────────────────────────────────────────
+  const generateDistCode = (name: string, codes: string[]): string => {
+    if (!name.trim()) return '';
+    const words = name.trim().split(/\s+/).filter(Boolean);
+    let base: string;
+    if (words.length >= 2) {
+      base = words.map((w) => w[0]).join('').slice(0, 4).toUpperCase();
+    } else {
+      base = words[0].replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase();
+    }
+    if (!base) return '';
+    const codesSet = new Set(codes.map((c) => c.toUpperCase()));
+    if (!codesSet.has(base)) return base;
+    let i = 2;
+    while (codesSet.has(`${base}${i}`)) i++;
+    return `${base}${i}`;
+  };
+
+  const openConvertModal = async (org: Organization) => {
+    setConvertOrg(org);
+    setConvertDistName(org.name || '');
+    setConvertCodeManual(false);
+    setConvertCommissionType('percent_margin');
+    setConvertPricingModel('margin_split');
+    setConvertCommissionRate('');
+    setConvertOwnerProfileId('');
+    setConvertMessage(null);
+    setShowConvertModal(true);
+
+    const [codes, members] = await Promise.all([
+      fetchDistributorCodes(),
+      fetchOrgMembers(org.id!),
+    ]);
+    setExistingDistCodes(codes);
+    setConvertDistCode(generateDistCode(org.name || '', codes));
+    setConvertOrgMembers(members);
+    // Auto-select the org admin if there is one
+    const admin = members.find((m) => m.orgRole === 'admin');
+    if (admin) setConvertOwnerProfileId(admin.userId);
+    else if (members.length === 1) setConvertOwnerProfileId(members[0].userId);
+  };
+
+  const handleConvertToDistributor = async () => {
+    if (!convertOrg?.id) return;
+    if (!convertDistName.trim()) {
+      setConvertMessage({ type: 'error', text: 'Distributor name is required.' });
+      return;
+    }
+    if (!convertDistCode.trim()) {
+      setConvertMessage({ type: 'error', text: 'Distributor code is required.' });
+      return;
+    }
+
+    try {
+      setIsConverting(true);
+      setConvertMessage(null);
+
+      const result = await convertOrgToDistributor({
+        organizationId: convertOrg.id,
+        distributorName: convertDistName.trim(),
+        distributorCode: convertDistCode.trim().toUpperCase(),
+        ownerProfileId: convertOwnerProfileId || null,
+        commissionType: convertCommissionType,
+        pricingModel: convertPricingModel,
+        commissionRate: convertCommissionRate ? Number(convertCommissionRate) : null,
+        contactName: convertOrg.contact_name || null,
+        phone: convertOrg.contact_phone || null,
+        address: (convertOrg as any).address || null,
+        city: (convertOrg as any).city || null,
+        state: (convertOrg as any).state || null,
+        zip: (convertOrg as any).zip || null,
+      });
+
+      if (!result.success) {
+        setConvertMessage({ type: 'error', text: result.error || 'Conversion failed.' });
+        return;
+      }
+
+      if (currentUser) {
+        activityLogService.logAction({
+          userId: currentUser.id,
+          action: 'organization_converted_to_distributor',
+          resourceType: 'organization',
+          resourceId: convertOrg.id,
+          details: {
+            org_name: convertOrg.name,
+            distributor_id: result.distributorId,
+            owner_profile_id: result.ownerProfileId,
+          },
+        });
+      }
+
+      setConvertMessage({ type: 'success', text: `"${convertOrg.name}" has been converted to a distributor.` });
+      fetchOrganizations();
+      fetchOrgStats();
+
+      setTimeout(() => {
+        setShowConvertModal(false);
+        setConvertOrg(null);
+        setConvertMessage(null);
+      }, 2000);
+    } catch (err) {
+      setConvertMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Conversion failed.',
+      });
+    } finally {
+      setIsConverting(false);
     }
   };
 
@@ -652,6 +779,15 @@ const OrganizationManagement: React.FC = () => {
                       >
                         <Archive className="h-4 w-4" />
                       </button>
+                      {(!org.org_type || org.org_type === 'customer') && (
+                        <button
+                          onClick={() => openConvertModal(org)}
+                          className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                          title="Convert to Distributor"
+                        >
+                          <ArrowRightLeft className="h-4 w-4" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDeleteOrganization(org)}
                         className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
@@ -1263,6 +1399,182 @@ const OrganizationManagement: React.FC = () => {
         onCancel={() => { setShowDeleteOrgModal(false); setDeleteTargetOrg(null); }}
         isProcessing={isDeletingOrg}
       />
+
+      {/* Convert to Distributor Modal */}
+      {showConvertModal && convertOrg && (
+        <div className="fixed inset-0 z-50 overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <ArrowRightLeft className="h-6 w-6 text-indigo-600" />
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">
+                      Convert to Distributor
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Convert <strong>{convertOrg.name}</strong> from a customer organization to a distributor.
+                    </p>
+
+                    {convertMessage && (
+                      <div className={`mt-3 p-3 rounded-lg flex items-center space-x-2 ${
+                        convertMessage.type === 'success'
+                          ? 'bg-green-50 border border-green-200'
+                          : 'bg-red-50 border border-red-200'
+                      }`}>
+                        {convertMessage.type === 'success' ? (
+                          <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                        )}
+                        <span className={`text-sm ${
+                          convertMessage.type === 'success' ? 'text-green-700' : 'text-red-700'
+                        }`}>
+                          {convertMessage.text}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="mt-4 space-y-4">
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <p className="text-xs text-amber-800">
+                          This will change the organization type to distributor, create a distributor entity,
+                          and promote the selected owner's role from customer to distributor.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Distributor Name *</label>
+                        <input
+                          type="text"
+                          value={convertDistName}
+                          onChange={(e) => {
+                            setConvertDistName(e.target.value);
+                            if (!convertCodeManual) {
+                              setConvertDistCode(generateDistCode(e.target.value, existingDistCodes));
+                            }
+                          }}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          placeholder="Distributor business name"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Distributor Code *</label>
+                        <input
+                          type="text"
+                          value={convertDistCode}
+                          onChange={(e) => {
+                            setConvertDistCode(e.target.value.toUpperCase());
+                            setConvertCodeManual(true);
+                          }}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          placeholder="AUTO"
+                        />
+                        <p className="text-xs text-gray-500 mt-0.5">Auto-generated from name. Edit to override.</p>
+                      </div>
+
+                      {convertOrgMembers.length > 0 && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Distributor Owner *
+                          </label>
+                          <select
+                            value={convertOwnerProfileId}
+                            onChange={(e) => setConvertOwnerProfileId(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          >
+                            <option value="">Auto-select (org admin)</option>
+                            {convertOrgMembers.map((m) => (
+                              <option key={m.userId} value={m.userId}>
+                                {m.fullName || m.email} ({m.orgRole})
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            This user's role will be changed from customer to distributor.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Commission Type</label>
+                          <select
+                            value={convertCommissionType}
+                            onChange={(e) => setConvertCommissionType(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          >
+                            <option value="percent_margin">% of Margin</option>
+                            <option value="percent_gross_sales">% of Gross Sales</option>
+                            <option value="percent_net_sales">% of Net Sales</option>
+                            <option value="flat_per_order">Flat per Order</option>
+                            <option value="flat_per_unit">Flat per Unit</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Pricing Model</label>
+                          <select
+                            value={convertPricingModel}
+                            onChange={(e) => setConvertPricingModel(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          >
+                            <option value="margin_split">Margin Split</option>
+                            <option value="wholesale">Wholesale</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Commission Rate {convertCommissionType.startsWith('flat') ? '($)' : '(%)'}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={convertCommissionRate}
+                          onChange={(e) => setConvertCommissionRate(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          placeholder="Leave blank to set later"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  onClick={handleConvertToDistributor}
+                  disabled={isConverting || !convertDistName.trim() || !convertDistCode.trim()}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isConverting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Converting...
+                    </>
+                  ) : (
+                    'Convert to Distributor'
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowConvertModal(false); setConvertOrg(null); setConvertMessage(null); }}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

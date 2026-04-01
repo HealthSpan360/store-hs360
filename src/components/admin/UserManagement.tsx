@@ -340,7 +340,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
 
   const handleSendPasswordReset = async () => {
     if (!selectedUser?.email) return;
-    
+
     try {
       setSendingPasswordReset(true);
       setModalMessage(null);
