@@ -469,16 +469,19 @@ const OrganizationManagement: React.FC = () => {
   const hasPendingChanges = Object.keys(pendingChanges).length > 0;
 
   const filteredOrganizations = organizations.filter(org => {
-    const matchesSearch = 
+    // Exclude orgs that have been converted to distributors
+    if (org.org_type === 'distributor') return false;
+
+    const matchesSearch =
       org.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       org.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (org.description && org.description.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesStatus = 
-      statusFilter === 'all' || 
+
+    const matchesStatus =
+      statusFilter === 'all' ||
       (statusFilter === 'active' && org.is_active) ||
       (statusFilter === 'inactive' && !org.is_active);
-    
+
     return matchesSearch && matchesStatus;
   });
 
