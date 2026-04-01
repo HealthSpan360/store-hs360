@@ -1478,10 +1478,10 @@ const OrganizationManagement: React.FC = () => {
                         <p className="text-xs text-gray-500 mt-0.5">Auto-generated from name. Edit to override.</p>
                       </div>
 
-                      {convertOrgMembers.length > 0 && (
+                      {convertOrgMembers.length > 0 ? (
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Distributor Owner *
+                            Distributor Owner
                           </label>
                           <select
                             value={convertOwnerProfileId}
@@ -1497,6 +1497,13 @@ const OrganizationManagement: React.FC = () => {
                           </select>
                           <p className="text-xs text-gray-500 mt-0.5">
                             This user's role will be changed from customer to distributor.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <p className="text-xs text-blue-700">
+                            No users are currently assigned to this organization.
+                            The distributor will be created without an owner — you can assign one later in Distributor Management.
                           </p>
                         </div>
                       )}
