@@ -1,3 +1,6 @@
+-- Drop any previous version of this function (old profile-based signature)
+DROP FUNCTION IF EXISTS public.convert_customer_to_distributor(uuid, text, text, text, text, numeric, text, text, text, text, text, text, text);
+
 -- Migration: convert_customer_to_distributor
 -- Converts a customer organization into a distributor. This:
 --   1. Flips the org's org_type from 'customer' to 'distributor'
