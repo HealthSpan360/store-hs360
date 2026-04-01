@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Shield, Clock, CheckCircle, Pencil, Trash2, Search, Filter, Key, AlertCircle, Save, RotateCcw, Plus, XCircle, Eye, Building2, FileText, Info, Send, ArrowRightLeft } from 'lucide-react';
+import { User, Mail, Shield, Clock, CheckCircle, Pencil, Trash2, Search, Filter, Key, AlertCircle, Save, RotateCcw, Plus, XCircle, Eye, Building2, FileText, Info, Send } from 'lucide-react';
 import { supabase } from '@/services/supabase';
 import type { Profile } from '@/services/supabase';
 import { ENV } from '@/config/env';
@@ -8,7 +8,6 @@ import { activityLogService } from '@/services/activityLog';
 import { emailService } from '@/services/emailService';
 import { softDeleteService } from '@/services/softDeleteService';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
-import { convertCustomerToDistributor, fetchDistributorCodes } from '@/services/customerConversionService';
 
 interface UserManagementProps {
   onUserApproved?: () => void;
@@ -64,16 +63,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
-  // Convert to distributor state
-  const [showConvertForm, setShowConvertForm] = useState(false);
-  const [isConverting, setIsConverting] = useState(false);
-  const [convertDistName, setConvertDistName] = useState('');
-  const [convertDistCode, setConvertDistCode] = useState('');
-  const [convertCodeManual, setConvertCodeManual] = useState(false);
-  const [convertCommissionType, setConvertCommissionType] = useState('percent_margin');
-  const [convertPricingModel, setConvertPricingModel] = useState('margin_split');
-  const [convertCommissionRate, setConvertCommissionRate] = useState('');
-  const [existingDistCodes, setExistingDistCodes] = useState<string[]>([]);
 
   useEffect(() => {
     fetchUsers();
@@ -346,110 +335,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
       const errorMessage = err instanceof Error ? err.message : 'Failed to update user';
       setError(errorMessage);
       setModalMessage({ type: 'error', text: errorMessage });
-    }
-  };
-
-  // ── Convert customer to distributor ─────────────────────────────────────
-  const generateCode = (name: string, codes: string[]): string => {
-    if (!name.trim()) return '';
-    const words = name.trim().split(/\s+/).filter(Boolean);
-    let base: string;
-    if (words.length >= 2) {
-      base = words.map((w) => w[0]).join('').slice(0, 4).toUpperCase();
-    } else {
-      base = words[0].replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase();
-    }
-    if (!base) return '';
-    const codesSet = new Set(codes.map((c) => c.toUpperCase()));
-    if (!codesSet.has(base)) return base;
-    let i = 2;
-    while (codesSet.has(`${base}${i}`)) i++;
-    return `${base}${i}`;
-  };
-
-  const openConvertForm = async () => {
-    setShowConvertForm(true);
-    setConvertDistName(selectedUser?.full_name || selectedUser?.company || '');
-    setConvertCodeManual(false);
-    setConvertCommissionType('percent_margin');
-    setConvertPricingModel('margin_split');
-    setConvertCommissionRate('');
-    const codes = await fetchDistributorCodes();
-    setExistingDistCodes(codes);
-    const autoCode = generateCode(selectedUser?.full_name || selectedUser?.company || '', codes);
-    setConvertDistCode(autoCode);
-  };
-
-  const handleConvertToDistributor = async () => {
-    if (!selectedUser) return;
-    if (!convertDistName.trim()) {
-      setModalMessage({ type: 'error', text: 'Distributor name is required.' });
-      return;
-    }
-    if (!convertDistCode.trim()) {
-      setModalMessage({ type: 'error', text: 'Distributor code is required.' });
-      return;
-    }
-
-    try {
-      setIsConverting(true);
-      setModalMessage(null);
-
-      const result = await convertCustomerToDistributor({
-        profileId: selectedUser.id,
-        name: convertDistName.trim(),
-        code: convertDistCode.trim().toUpperCase(),
-        commissionType: convertCommissionType,
-        pricingModel: convertPricingModel,
-        commissionRate: convertCommissionRate ? Number(convertCommissionRate) : null,
-        contactName: selectedUser.full_name || null,
-        phone: selectedUser.phone || null,
-        address: selectedUser.address1 || null,
-        city: selectedUser.city || null,
-        state: selectedUser.state || null,
-        zip: selectedUser.postal_code || null,
-      });
-
-      if (!result.success) {
-        setModalMessage({ type: 'error', text: result.error || 'Conversion failed.' });
-        return;
-      }
-
-      // Log the conversion
-      if (currentUser) {
-        activityLogService.logAction({
-          userId: currentUser.id,
-          action: 'user_role_changed',
-          resourceType: 'user',
-          resourceId: selectedUser.id,
-          details: {
-            email: selectedUser.email,
-            old_role: 'customer',
-            new_role: 'distributor',
-            conversion: true,
-            distributor_id: result.distributorId,
-          },
-        });
-      }
-
-      setModalMessage({ type: 'success', text: 'Customer converted to distributor successfully.' });
-      setShowConvertForm(false);
-
-      // Refresh user list to reflect the change
-      fetchUsers();
-
-      setTimeout(() => {
-        setIsEditModalOpen(false);
-        setSelectedUser(null);
-        setModalMessage(null);
-      }, 2000);
-    } catch (err) {
-      setModalMessage({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Conversion failed.',
-      });
-    } finally {
-      setIsConverting(false);
     }
   };
 
@@ -1421,126 +1306,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                         </div>
                       </div>
                       
-                      {/* Convert to Distributor Section — only for customers */}
-                      {selectedUser.role === 'customer' && (
-                        <div className="pt-4 border-t border-gray-200">
-                          <div className="flex items-center justify-between mb-2">
-                            <label className="block text-sm font-semibold text-gray-700">
-                              Convert to Distributor
-                            </label>
-                          </div>
-                          {!showConvertForm ? (
-                            <button
-                              type="button"
-                              onClick={openConvertForm}
-                              className="w-full flex items-center justify-center space-x-2 px-4 py-2 border border-indigo-300 rounded-lg text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                            >
-                              <ArrowRightLeft className="h-4 w-4" />
-                              <span>Convert This Customer to a Distributor</span>
-                            </button>
-                          ) : (
-                            <div className="space-y-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
-                              <p className="text-xs text-indigo-700">
-                                This will change the user's role to distributor, create a distributor record,
-                                and convert their current organization memberships into distributor-customer relationships.
-                              </p>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">Distributor Name *</label>
-                                <input
-                                  type="text"
-                                  value={convertDistName}
-                                  onChange={(e) => {
-                                    setConvertDistName(e.target.value);
-                                    if (!convertCodeManual) {
-                                      setConvertDistCode(generateCode(e.target.value, existingDistCodes));
-                                    }
-                                  }}
-                                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                  placeholder="Distributor business name"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">Distributor Code *</label>
-                                <input
-                                  type="text"
-                                  value={convertDistCode}
-                                  onChange={(e) => {
-                                    setConvertDistCode(e.target.value.toUpperCase());
-                                    setConvertCodeManual(true);
-                                  }}
-                                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                  placeholder="AUTO"
-                                />
-                                <p className="text-xs text-gray-500 mt-0.5">Auto-generated from name. Edit to override.</p>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-700 mb-1">Commission Type</label>
-                                  <select
-                                    value={convertCommissionType}
-                                    onChange={(e) => setConvertCommissionType(e.target.value)}
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                  >
-                                    <option value="percent_margin">% of Margin</option>
-                                    <option value="percent_gross_sales">% of Gross Sales</option>
-                                    <option value="percent_net_sales">% of Net Sales</option>
-                                    <option value="flat_per_order">Flat per Order</option>
-                                    <option value="flat_per_unit">Flat per Unit</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-700 mb-1">Pricing Model</label>
-                                  <select
-                                    value={convertPricingModel}
-                                    onChange={(e) => setConvertPricingModel(e.target.value)}
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                  >
-                                    <option value="margin_split">Margin Split</option>
-                                    <option value="wholesale">Wholesale</option>
-                                  </select>
-                                </div>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
-                                  Commission Rate {convertCommissionType.startsWith('flat') ? '($)' : '(%)'}
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={convertCommissionRate}
-                                  onChange={(e) => setConvertCommissionRate(e.target.value)}
-                                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                  placeholder="Leave blank to set later"
-                                />
-                              </div>
-                              <div className="flex space-x-2 pt-2">
-                                <button
-                                  type="button"
-                                  onClick={handleConvertToDistributor}
-                                  disabled={isConverting || !convertDistName.trim() || !convertDistCode.trim()}
-                                  className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {isConverting ? (
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                  ) : (
-                                    <ArrowRightLeft className="h-4 w-4" />
-                                  )}
-                                  <span>{isConverting ? 'Converting...' : 'Convert'}</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setShowConvertForm(false)}
-                                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
                       {/* Password Reset Section */}
                       <div className="pt-4 border-t border-gray-200">
                         <div className="flex items-center justify-between mb-2">
