@@ -468,10 +468,10 @@ const OrganizationManagement: React.FC = () => {
 
   const hasPendingChanges = Object.keys(pendingChanges).length > 0;
 
-  const filteredOrganizations = organizations.filter(org => {
-    // Exclude orgs that have been converted to distributors
-    if (org.org_type === 'distributor') return false;
+  // Exclude distributor-type orgs from all customer views
+  const customerOrgs = organizations.filter(org => org.org_type !== 'distributor');
 
+  const filteredOrganizations = customerOrgs.filter(org => {
     const matchesSearch =
       org.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       org.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -683,7 +683,7 @@ const OrganizationManagement: React.FC = () => {
             <Building2 className="h-8 w-8 text-purple-600" />
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-500">Total Customers</p>
-              <p className="text-2xl font-semibold text-gray-900">{organizations.length}</p>
+              <p className="text-2xl font-semibold text-gray-900">{customerOrgs.length}</p>
             </div>
           </div>
         </div>
@@ -693,7 +693,7 @@ const OrganizationManagement: React.FC = () => {
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-500">Active</p>
               <p className="text-2xl font-semibold text-gray-900">
-                {organizations.filter(org => org.is_active).length}
+                {customerOrgs.filter(org => org.is_active).length}
               </p>
             </div>
           </div>
@@ -704,7 +704,7 @@ const OrganizationManagement: React.FC = () => {
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-500">Inactive</p>
               <p className="text-2xl font-semibold text-gray-900">
-                {organizations.filter(org => !org.is_active).length}
+                {customerOrgs.filter(org => !org.is_active).length}
               </p>
             </div>
           </div>
@@ -715,7 +715,7 @@ const OrganizationManagement: React.FC = () => {
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-500">Total Addresses</p>
               <p className="text-2xl font-semibold text-gray-900">
-                {Object.values(orgStats).reduce((sum, stat) => sum + stat.addresses, 0)}
+                {customerOrgs.reduce((sum, org) => sum + (orgStats[org.id]?.addresses || 0), 0)}
               </p>
             </div>
           </div>
