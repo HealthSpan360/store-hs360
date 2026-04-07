@@ -114,6 +114,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose, initialTab }) 
         .from('profiles')
         .select('id, email, full_name, created_at', { count: 'exact' })
         .eq('approval_status', 'pending')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
       if (error) throw error;
       setPendingCount(count || 0);
