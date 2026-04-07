@@ -515,7 +515,8 @@ class OrderService {
       const { count, error } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true })
-        .eq('approval_status', 'pending');
+        .eq('approval_status', 'pending')
+        .is('deleted_at', null);
 
       if (error) {
         console.error('Error fetching pending user count:', error);
