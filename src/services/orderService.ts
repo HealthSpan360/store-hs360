@@ -213,6 +213,29 @@ class OrderService {
         user_id: data.userId,
       }).catch(err => console.warn('Failed to send order confirmation email:', err));
 
+      // Notify internal order management (fire-and-forget)
+      emailService.sendNotification({
+        to: 'order@hs360.co',
+        email_type: 'order_confirmation',
+        subject: `New Order Placed — #${order.id.slice(0, 8).toUpperCase()}`,
+        template_data: {
+          order_id: order.id,
+          order_date: order.created_at,
+          items: data.items.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+          subtotal: data.subtotal,
+          shipping: data.shipping,
+          shipping_method: (data as Record<string, unknown>).shippingMethod || 'Standard',
+          tax: data.tax,
+          total: data.total,
+          customer_email: data.customerEmail,
+          shipping_address: data.shippingAddress || null,
+          billing_address: data.billingAddress || null,
+          payment_status: order.payment_status || 'pending',
+          payment_method: (data as Record<string, unknown>).paymentMethod || '',
+          payment_last_four: (data as Record<string, unknown>).paymentLastFour || '',
+        },
+      }).catch(err => console.warn('Failed to send internal order notification:', err));
+
       return { order };
     } catch (error) {
       console.error('Error creating order:', error);

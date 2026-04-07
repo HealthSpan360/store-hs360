@@ -85,6 +85,8 @@ export async function fetchDistributorCodes(): Promise<string[]> {
 
 /**
  * Fetches the members of an organization (for owner selection dropdown).
+ * If the org has no user_organization_roles entries, falls back to
+ * looking up a profile matching the org's contact_email.
  */
 export async function fetchOrgMembers(organizationId: string) {
   const { data, error } = await supabase
@@ -93,10 +95,41 @@ export async function fetchOrgMembers(organizationId: string) {
     .eq('organization_id', organizationId);
 
   if (error) return [];
-  return (data || []).map((row: any) => ({
+
+  const members = (data || []).map((row: any) => ({
     userId: row.user_id,
     orgRole: row.role,
     email: row.profiles?.email || '',
     fullName: row.profiles?.full_name || '',
   }));
+
+  // If no org members found, try matching by the org's contact_email
+  if (members.length === 0) {
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('contact_email')
+      .eq('id', organizationId)
+      .single();
+
+    if (orgData?.contact_email) {
+      const { data: profileMatch } = await supabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .eq('email', orgData.contact_email)
+        .is('deleted_at', null)
+        .limit(1);
+
+      if (profileMatch && profileMatch.length > 0) {
+        const p = profileMatch[0];
+        members.push({
+          userId: p.id,
+          orgRole: 'contact',
+          email: p.email,
+          fullName: p.full_name || '',
+        });
+      }
+    }
+  }
+
+  return members;
 }
