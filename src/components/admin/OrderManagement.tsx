@@ -380,7 +380,9 @@ const OrderManagement: React.FC = () => {
       const viewRole = effectiveProfile?.role ?? profile?.role;
       const viewUserId = effectiveUserId ?? user?.id;
 
-      if (viewRole === 'sales_rep' && viewUserId) {
+      if (viewRole === 'customer' && viewUserId) {
+        query = query.eq('user_id', viewUserId);
+      } else if (viewRole === 'sales_rep' && viewUserId) {
         query = query.eq('sales_rep_id', viewUserId);
       } else if (viewRole === 'distributor' && viewUserId) {
         // Get the distributor record for the effective user
