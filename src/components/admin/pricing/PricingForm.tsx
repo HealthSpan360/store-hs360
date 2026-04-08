@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { X, DollarSign, Building2, User, Calendar, Hash } from 'lucide-react';
-import { EnrichedPricingEntry } from './usePricingData';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, DollarSign, Building2, User, Calendar, Hash, AlertTriangle } from 'lucide-react';
+import { EnrichedPricingEntry, ProductOption } from './usePricingData';
 
 type PricingType = 'individual' | 'organization';
 
@@ -36,6 +36,7 @@ interface PricingFormProps {
   users: UserOption[];
   editEntry?: EnrichedPricingEntry | null;
   preselectedProductId?: number;
+  products?: ProductOption[];
 }
 
 const PricingForm: React.FC<PricingFormProps> = ({
@@ -47,6 +48,7 @@ const PricingForm: React.FC<PricingFormProps> = ({
   users,
   editEntry,
   preselectedProductId,
+  products = [],
 }) => {
   const [pricingType, setPricingType] = useState<PricingType>('organization');
   const [entityId, setEntityId] = useState('');
@@ -60,6 +62,13 @@ const PricingForm: React.FC<PricingFormProps> = ({
   const [useMarkup, setUseMarkup] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [entitySearch, setEntitySearch] = useState('');
+
+  // Look up cost for the selected product
+  const selectedProductCost = useMemo(() => {
+    if (!productId) return null;
+    const product = products.find(p => p.id === Number(productId));
+    return product?.cost ?? null;
+  }, [productId, products]);
 
   useEffect(() => {
     if (editEntry) {
@@ -125,6 +134,12 @@ const PricingForm: React.FC<PricingFormProps> = ({
     }
     if (useMarkup && (!markupPrice || isNaN(Number(markupPrice)))) {
       setFormError('Please enter a valid markup price');
+      return;
+    }
+
+    // Enforce cost floor
+    if (!useMarkup && selectedProductCost != null && Number(contractPrice) < selectedProductCost) {
+      setFormError(`Price $${Number(contractPrice).toFixed(2)} is below product cost $${selectedProductCost.toFixed(2)}. Cost is the absolute floor.`);
       return;
     }
 
@@ -309,18 +324,37 @@ const PricingForm: React.FC<PricingFormProps> = ({
                   />
                 </div>
               ) : (
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={contractPrice}
-                    onChange={(e) => setContractPrice(e.target.value)}
-                    placeholder="Contract price"
-                    className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  />
-                </div>
+                <>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={selectedProductCost != null ? selectedProductCost : 0}
+                      value={contractPrice}
+                      onChange={(e) => setContractPrice(e.target.value)}
+                      placeholder="Contract price"
+                      className={`w-full pl-7 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent ${
+                        contractPrice && selectedProductCost != null && Number(contractPrice) < selectedProductCost
+                          ? 'border-red-300 bg-red-50'
+                          : 'border-gray-300'
+                      }`}
+                    />
+                  </div>
+                  {selectedProductCost != null && (
+                    <p className={`text-xs mt-1 ${
+                      contractPrice && Number(contractPrice) < selectedProductCost
+                        ? 'text-red-600 font-medium'
+                        : 'text-gray-500'
+                    }`}>
+                      {contractPrice && Number(contractPrice) < selectedProductCost ? (
+                        <><AlertTriangle className="h-3 w-3 inline mr-1" />Price is below cost</>
+                      ) : (
+                        <>Cost floor: ${selectedProductCost.toFixed(2)}</>
+                      )}
+                    </p>
+                  )}
+                </>
               )}
             </div>
 

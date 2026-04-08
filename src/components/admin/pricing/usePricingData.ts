@@ -13,6 +13,7 @@ export interface ProductOption {
   name: string;
   sku: string | null;
   price: number;
+  cost: number | null;
 }
 
 interface OrganizationOption {
@@ -75,7 +76,7 @@ export function usePricingData(organizationId?: string) {
     try {
       const { data } = await supabase
         .from('products')
-        .select('id, name, sku, price')
+        .select('id, name, sku, price, cost')
         .eq('is_active', true)
         .order('name');
       if (data) setProducts(data as ProductOption[]);
