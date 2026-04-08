@@ -344,6 +344,7 @@ const PricingManagement: React.FC<PricingManagementProps> = ({ organizationId })
         organizations={organizations}
         users={users}
         editEntry={editEntry}
+        products={products}
       />
 
       {isImportOpen && selectedOrgId && (

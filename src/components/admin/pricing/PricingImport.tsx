@@ -129,6 +129,8 @@ const PricingImport: React.FC<PricingImportProps> = ({
         row.error = 'Product not found';
       } else if (priceStr === '' || isNaN(price) || price < 0) {
         row.error = 'Invalid price';
+      } else if (product.cost != null && price < product.cost) {
+        row.error = `Below cost ($${product.cost.toFixed(2)})`;
       }
 
       rows.push(row);

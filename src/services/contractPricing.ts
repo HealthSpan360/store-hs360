@@ -162,6 +162,22 @@ class ContractPricingService {
     overrideReason?: string
   ): Promise<{ success: boolean; error?: string; data?: any }> {
     try {
+      // Enforce cost floor: contract price must not be below product cost
+      if (contractPrice != null) {
+        const { data: product } = await supabase
+          .from('products')
+          .select('cost')
+          .eq('id', productId)
+          .single();
+
+        if (product?.cost != null && contractPrice < product.cost) {
+          return {
+            success: false,
+            error: `Price $${contractPrice.toFixed(2)} is below product cost $${product.cost.toFixed(2)}. Cost is the absolute floor.`,
+          };
+        }
+      }
+
       const { data, error } = await supabase
         .from('contract_pricing')
         .upsert({

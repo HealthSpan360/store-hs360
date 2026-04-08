@@ -116,6 +116,13 @@ const ProductPricingGrid: React.FC<ProductPricingGridProps> = ({
       return;
     }
 
+    // Enforce cost floor
+    const product = products.find(p => p.id === productId);
+    if (product?.cost != null && price < product.cost) {
+      setRowError({ productId, msg: `Below cost ($${product.cost.toFixed(2)})` });
+      return;
+    }
+
     const existing = pricingMap.get(productId);
     setSavingRow(productId);
     const result = await onSavePrice({
@@ -228,7 +235,7 @@ const ProductPricingGrid: React.FC<ProductPricingGridProps> = ({
                             ref={inputRef}
                             type="number"
                             step="0.01"
-                            min="0"
+                            min={product.cost != null ? product.cost : 0}
                             value={editValue}
                             onChange={(e) => { setEditValue(e.target.value); setRowError(null); }}
                             onKeyDown={(e) => handleKeyDown(e, product.id)}
