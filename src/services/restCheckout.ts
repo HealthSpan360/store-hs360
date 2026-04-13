@@ -233,6 +233,7 @@ class RestCheckoutService {
       paymentLastFour?: string;
     }
   ): Promise<CheckoutFlowResult> {
+    let session: any = null;
     try {
 
       await supabase
@@ -243,11 +244,12 @@ class RestCheckoutService {
         })
         .eq('id', sessionId);
 
-      const { data: session } = await supabase
+      const { data: sessionData } = await supabase
         .from('checkout_sessions')
         .select('*')
         .eq('id', sessionId)
         .maybeSingle();
+      session = sessionData;
 
       if (!session) {
         throw new Error('Checkout session not found');
