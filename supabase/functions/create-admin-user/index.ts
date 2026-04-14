@@ -142,23 +142,74 @@ Deno.serve(async (req: Request) => {
     let userId: string;
     let reactivated = false;
 
+    // ── Pre-check for an orphan profile with this email ──
+    // profiles.email is UNIQUE, and an admin-created profile whose auth.users
+    // row never existed (or got deleted) would otherwise cause the
+    // handle_new_user trigger to raise on email-uniqueness, surfacing as a
+    // generic "Database error creating new user". When we find an orphan, we
+    // pin the new auth user to the existing profile id so the trigger no-ops
+    // on (id) instead of colliding on (email).
+    let orphanProfileId: string | null = null;
+    {
+      const { data: existingProfileByEmail } = await adminClient
+        .from("profiles")
+        .select("id")
+        .ilike("email", body.email)
+        .maybeSingle();
+      if (existingProfileByEmail?.id) {
+        const { data: authMatch } = await adminClient.auth.admin.getUserById(existingProfileByEmail.id);
+        if (!authMatch?.user) {
+          orphanProfileId = existingProfileByEmail.id;
+          console.log("Found orphan profile (no matching auth user) for", body.email, "id =", orphanProfileId);
+        }
+      }
+    }
+
     const tempPassword = crypto.randomUUID() + crypto.randomUUID();
-    const { data: authData, error: createError } = await adminClient.auth.admin.createUser({
+    const createPayload: Record<string, unknown> = {
       email: body.email,
       password: tempPassword,
       email_confirm: false,
       user_metadata: { full_name: body.fullName || "" },
-    });
+    };
+    if (orphanProfileId) {
+      createPayload.id = orphanProfileId;
+    }
+    const { data: authData, error: createError } = await adminClient.auth.admin.createUser(createPayload);
 
     if (createError) {
-      // Check if this is a "user already exists" error — try to reactivate
-      const { data: existingUsers } = await adminClient.auth.admin.listUsers();
-      const existingUser = existingUsers?.users?.find(
-        (u: { email?: string }) => u.email?.toLowerCase() === body.email.toLowerCase()
-      );
+      console.error("createUser failed:", createError.message, "— scanning for existing user by email");
+
+      // Check if this is a "user already exists" error — try to reactivate.
+      // Paginate listUsers (default page size is 50, so a stale email past
+      // page 1 would otherwise be missed and we'd rethrow the original
+      // "Database error creating new user" instead of adopting).
+      let existingUser: { id: string; email?: string } | undefined;
+      const targetEmail = body.email.toLowerCase();
+      let page = 1;
+      const perPage = 1000;
+      while (!existingUser) {
+        const { data: pageData, error: listErr } = await adminClient.auth.admin.listUsers({ page, perPage });
+        if (listErr) {
+          console.error("listUsers failed during duplicate scan:", listErr.message);
+          break;
+        }
+        existingUser = (pageData?.users || []).find(
+          (u: { email?: string }) => u.email?.toLowerCase() === targetEmail
+        );
+        if (existingUser) break;
+        if (!pageData?.users || pageData.users.length < perPage) break;
+        page += 1;
+      }
 
       if (!existingUser) {
-        return jsonResponse({ success: false, error: createError.message }, 400);
+        // Genuinely a new user but creation failed — surface the underlying
+        // cause (likely a trigger / constraint failure on auth.users).
+        return jsonResponse({
+          success: false,
+          error: createError.message,
+          detail: "auth.admin.createUser failed and no existing user with this email was found. The most common cause is the public.handle_new_user trigger raising — check the Postgres logs.",
+        }, 400);
       }
 
       // Check if profile is soft-deleted or pending approval
