@@ -12,6 +12,7 @@
  * Caller must be an authenticated admin.
  */
 const { createClient } = require('@supabase/supabase-js');
+const { randomUUID } = require('crypto');
 const sendEmail = require('./send-email.cjs');
 
 const ALLOWED_ORIGIN = process.env.CORS_ALLOWED_ORIGIN || '*';
@@ -121,24 +122,50 @@ exports.handler = async (event) => {
 
     const siteUrl = (bodySiteUrl || process.env.SITE_URL || process.env.URL || '').replace(/\/$/, '');
 
-    // ── Ensure auth.users row exists for this profile ──
-    // If the profile predates auth (or the auth user was deleted), generateLink
-    // would otherwise fail with "user not found". Bootstrap a matching auth user
-    // pinned to the existing profile id so FKs stay valid.
-    let authUser = null;
+    // ── Ensure an auth.users row exists for this email ──
+    // Look up by email (not id) because the profile id may not match the auth
+    // user id, and a name-collision on email would make createUser fail. Only
+    // bootstrap when no auth user with this email exists at all.
+    let authUserExists = false;
     try {
-      const { data: existing } = await adminClient.auth.admin.getUserById(profile.id);
-      authUser = existing?.user || null;
+      const { data: byId } = await adminClient.auth.admin.getUserById(profile.id);
+      if (byId?.user) {
+        authUserExists = true;
+      }
     } catch (lookupErr) {
       console.warn('[resend-invite] getUserById failed (non-fatal):', lookupErr?.message);
     }
 
-    if (!authUser) {
-      console.log('[resend-invite] No auth user for profile, creating one with id', profile.id);
+    if (!authUserExists) {
+      try {
+        // Paginate listUsers to find by email — listUsers caps at 1000/page.
+        let page = 1;
+        const perPage = 1000;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { data: list, error: listErr } = await adminClient.auth.admin.listUsers({ page, perPage });
+          if (listErr) throw listErr;
+          const match = (list?.users || []).find(
+            (u) => (u.email || '').toLowerCase() === profile.email.toLowerCase()
+          );
+          if (match) {
+            authUserExists = true;
+            break;
+          }
+          if (!list?.users || list.users.length < perPage) break;
+          page += 1;
+        }
+      } catch (listErr) {
+        console.warn('[resend-invite] listUsers failed (non-fatal):', listErr?.message);
+      }
+    }
+
+    if (!authUserExists) {
+      console.log('[resend-invite] No auth user for', profile.email, '— bootstrapping with id', profile.id);
       const { error: createErr } = await adminClient.auth.admin.createUser({
         id: profile.id,
         email: profile.email,
-        password: `${crypto.randomUUID()}${crypto.randomUUID()}`,
+        password: `${randomUUID()}${randomUUID()}`,
         email_confirm: false,
         user_metadata: { full_name: profile.full_name || '' },
       });
