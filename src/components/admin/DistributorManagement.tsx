@@ -3,7 +3,7 @@ import {
   Users, Building, Plus, Trash2, X, Save,
   TrendingUp, DollarSign, Building2, Percent, Package,
   ChevronDown, ChevronRight, UserPlus, Pencil, Upload,
-  Search, Eye, ArrowLeft, Settings, Archive, CheckCircle, AlertCircle,
+  Search, Eye, ArrowLeft, Settings, Archive, CheckCircle, AlertCircle, Mail,
 } from 'lucide-react';
 import { supabase } from '@/services/supabase';
 import { softDeleteService } from '@/services/softDeleteService';
@@ -292,6 +292,9 @@ const DistributorManagement: React.FC = () => {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [isCreatingUser, setIsCreatingUser] = useState(false);
 
+  // Resend invite state — tracks which distributor row is currently sending
+  const [resendingInviteFor, setResendingInviteFor] = useState<string | null>(null);
+
   // Auto-code and commission collapse
   const [codeManuallyEdited, setCodeManuallyEdited] = useState(false);
   const [showCommissionFields, setShowCommissionFields] = useState(false);
@@ -504,6 +507,53 @@ const DistributorManagement: React.FC = () => {
       setError(getErrorMessage(err, 'Failed to create distributor'));
     } finally {
       setIsCreatingUser(false);
+    }
+  };
+
+  const handleResendInvite = async (distributor: Distributor) => {
+    if (!distributor.profile_id) {
+      setError('This distributor has no linked user account.');
+      return;
+    }
+    const recipient = distributor.profiles?.email || distributor.name;
+    if (!window.confirm(`Resend the invitation email to ${recipient}?`)) return;
+
+    try {
+      setError(null);
+      setSuccess(null);
+      setResendingInviteFor(distributor.id);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No active session');
+
+      const response = await fetch(
+        `${ENV.SUPABASE_URL}/functions/v1/resend-invite`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: distributor.profile_id,
+            siteUrl: window.location.origin,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || 'Failed to resend invite');
+
+      setSuccess(`Invitation email sent to ${result.email || recipient}.`);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to resend invite'));
+    } finally {
+      setResendingInviteFor(null);
     }
   };
 
@@ -1609,6 +1659,16 @@ const DistributorManagement: React.FC = () => {
                         >
                           <Settings className="h-4 w-4" />
                         </button>
+                        {distributor.profile_id && (
+                          <button
+                            onClick={() => handleResendInvite(distributor)}
+                            disabled={resendingInviteFor === distributor.id}
+                            className="p-2 text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Resend invitation email"
+                          >
+                            <Mail className="h-4 w-4" />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDeleteDistributor(distributor)}
                           className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
