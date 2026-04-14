@@ -519,20 +519,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
       return;
     }
 
-    if (newUserRole === 'sales_rep' && isIndependent && !w9Consent) {
-      setModalMessage({ type: 'error', text: 'W-9 consent is required for independent sales reps' });
-      return;
-    }
-
     if (newUserRole === 'sales_rep' && !isIndependent && !selectedDistributorId) {
       setModalMessage({ type: 'error', text: 'Please select a distributor' });
       return;
     }
 
-    if (newUserRole === 'distributor' && !w9Consent) {
-      setModalMessage({ type: 'error', text: 'W-9 consent is required for distributors' });
-      return;
-    }
+    // W-9 information is optional at user creation — the user can submit it
+    // through their account later. w9_status defaults to 'pending' until then.
 
     try {
       setIsCreatingUser(true);
@@ -1715,7 +1708,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                               <h5 className="text-sm font-medium text-gray-900 flex items-center space-x-2">
                                 <FileText className="h-4 w-4" />
                                 <span>W-9 / 1099 Information</span>
+                                <span className="text-xs font-normal text-gray-500">(optional)</span>
                               </h5>
+                              <p className="text-xs text-gray-500">
+                                Leave blank to collect from the sales rep later. Status will be marked &ldquo;Pending&rdquo; until W-9 is on file.
+                              </p>
 
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -1731,7 +1728,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                                 </div>
                                 <div>
                                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                                    {taxIdType === 'ssn' ? 'SSN' : 'EIN'} *
+                                    {taxIdType === 'ssn' ? 'SSN' : 'EIN'}
                                   </label>
                                   <input
                                     type="text"
@@ -1744,7 +1741,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                               </div>
 
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">Legal Name *</label>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Legal Name</label>
                                 <input
                                   type="text"
                                   value={legalName}
@@ -1766,7 +1763,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                               </div>
 
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">Tax Classification *</label>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Tax Classification</label>
                                 <select
                                   value={taxClassification}
                                   onChange={(e) => setTaxClassification(e.target.value)}
@@ -1794,7 +1791,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                   />
                                   <span className="ml-2 text-xs text-gray-700">
-                                    I certify that the information provided is correct (W-9 consent) *
+                                    I certify that the information provided is correct (W-9 consent)
                                   </span>
                                 </label>
                               </div>
@@ -1893,7 +1890,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                             <h5 className="text-sm font-medium text-gray-900 flex items-center space-x-2">
                               <FileText className="h-4 w-4" />
                               <span>W-9 / 1099 Information</span>
+                              <span className="text-xs font-normal text-gray-500">(optional)</span>
                             </h5>
+                            <p className="text-xs text-gray-500">
+                              Leave blank to collect from the distributor later. Status will be marked &ldquo;Pending&rdquo; until W-9 is on file.
+                            </p>
 
                             <div className="grid grid-cols-2 gap-3">
                               <div>
@@ -1909,7 +1910,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                                  {taxIdType === 'ssn' ? 'SSN' : 'EIN'} *
+                                  {taxIdType === 'ssn' ? 'SSN' : 'EIN'}
                                 </label>
                                 <input
                                   type="text"
@@ -1922,7 +1923,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                             </div>
 
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Legal Name *</label>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Legal Name</label>
                               <input
                                 type="text"
                                 value={legalName}
@@ -1944,7 +1945,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                             </div>
 
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Tax Classification *</label>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Tax Classification</label>
                               <select
                                 value={taxClassification}
                                 onChange={(e) => setTaxClassification(e.target.value)}
@@ -1972,7 +1973,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onUserApproved, onClose
                                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                 />
                                 <span className="ml-2 text-xs text-gray-700">
-                                  I certify that the information provided is correct (W-9 consent) *
+                                  I certify that the information provided is correct (W-9 consent)
                                 </span>
                               </label>
                             </div>
