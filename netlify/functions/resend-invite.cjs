@@ -12,6 +12,7 @@
  * Caller must be an authenticated admin.
  */
 const { createClient } = require('@supabase/supabase-js');
+const sendEmail = require('./send-email.cjs');
 
 const ALLOWED_ORIGIN = process.env.CORS_ALLOWED_ORIGIN || '*';
 
@@ -51,28 +52,33 @@ const SUBJECT_MAP = {
   sales_rep: 'Welcome to HealthSpan360 — Sales Rep Account',
 };
 
+function jsonError(statusCode, error, detail) {
+  console.error('[resend-invite]', error, detail || '');
+  return {
+    statusCode,
+    headers: corsHeaders,
+    body: JSON.stringify(detail ? { error, detail } : { error }),
+  };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: corsHeaders, body: '' };
   }
 
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers: corsHeaders, body: JSON.stringify({ error: 'Method not allowed' }) };
+    return jsonError(405, 'Method not allowed');
   }
 
   try {
     // ── Verify caller is an authenticated admin ──
     const authHeader = event.headers.authorization || event.headers.Authorization || '';
     const token = authHeader.replace(/^Bearer\s+/i, '');
-    if (!token) {
-      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ error: 'Unauthorized' }) };
-    }
+    if (!token) return jsonError(401, 'Missing authorization header');
 
     const userClient = getSupabaseUser(token);
     const { data: { user }, error: userError } = await userClient.auth.getUser();
-    if (userError || !user) {
-      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ error: 'Invalid session' }) };
-    }
+    if (userError || !user) return jsonError(401, 'Invalid session', userError?.message);
 
     const adminClient = getSupabaseAdmin();
     const { data: callerProfile, error: callerProfileError } = await adminClient
@@ -82,18 +88,21 @@ exports.handler = async (event) => {
       .single();
 
     if (callerProfileError || !callerProfile) {
-      return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ error: 'Profile not found' }) };
+      return jsonError(401, 'Profile not found', callerProfileError?.message);
     }
-
     if (callerProfile.role !== 'admin') {
-      return { statusCode: 403, headers: corsHeaders, body: JSON.stringify({ error: 'Only admins can resend invites' }) };
+      return jsonError(403, 'Only admins can resend invites');
     }
 
     // ── Parse body ──
-    const { userId, email, siteUrl: bodySiteUrl } = JSON.parse(event.body || '{}');
-    if (!userId && !email) {
-      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: 'userId or email is required' }) };
+    let body;
+    try {
+      body = JSON.parse(event.body || '{}');
+    } catch (parseErr) {
+      return jsonError(400, 'Invalid JSON body', parseErr.message);
     }
+    const { userId, email, siteUrl: bodySiteUrl } = body;
+    if (!userId && !email) return jsonError(400, 'userId or email is required');
 
     // ── Look up the target profile ──
     const profileQuery = adminClient
@@ -104,14 +113,39 @@ exports.handler = async (event) => {
       : await profileQuery.eq('email', email).single();
 
     if (profileLookupError || !profile) {
-      return { statusCode: 404, headers: corsHeaders, body: JSON.stringify({ error: 'User not found' }) };
+      return jsonError(404, 'User not found', profileLookupError?.message);
     }
-
     if (!profile.email) {
-      return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: 'User has no email on file' }) };
+      return jsonError(400, 'User has no email on file');
     }
 
     const siteUrl = (bodySiteUrl || process.env.SITE_URL || process.env.URL || '').replace(/\/$/, '');
+
+    // ── Ensure auth.users row exists for this profile ──
+    // If the profile predates auth (or the auth user was deleted), generateLink
+    // would otherwise fail with "user not found". Bootstrap a matching auth user
+    // pinned to the existing profile id so FKs stay valid.
+    let authUser = null;
+    try {
+      const { data: existing } = await adminClient.auth.admin.getUserById(profile.id);
+      authUser = existing?.user || null;
+    } catch (lookupErr) {
+      console.warn('[resend-invite] getUserById failed (non-fatal):', lookupErr?.message);
+    }
+
+    if (!authUser) {
+      console.log('[resend-invite] No auth user for profile, creating one with id', profile.id);
+      const { error: createErr } = await adminClient.auth.admin.createUser({
+        id: profile.id,
+        email: profile.email,
+        password: `${crypto.randomUUID()}${crypto.randomUUID()}`,
+        email_confirm: false,
+        user_metadata: { full_name: profile.full_name || '' },
+      });
+      if (createErr) {
+        return jsonError(500, 'Failed to bootstrap auth user', createErr.message);
+      }
+    }
 
     // ── Generate recovery link via admin API ──
     const redirectUrl = siteUrl ? `${siteUrl}?type=recovery` : undefined;
@@ -122,29 +156,23 @@ exports.handler = async (event) => {
     });
 
     if (linkError) {
-      console.error('[resend-invite] generateLink error:', linkError);
-      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: linkError.message }) };
+      return jsonError(500, 'Failed to generate recovery link', linkError.message);
     }
 
-    // Build link to our app with token_hash directly (avoids email scanners
-    // pre-fetching the action_link and consuming the one-time token).
+    // Build link to our app with token_hash (avoids email scanners pre-fetching
+    // the action_link and consuming the one-time token).
     const tokenHash = linkData?.properties?.hashed_token;
     const loginUrl = tokenHash && siteUrl
       ? `${siteUrl}?type=recovery&token_hash=${encodeURIComponent(tokenHash)}`
       : linkData?.properties?.action_link || siteUrl;
 
-    // ── Dispatch via send-email function so we use the role-specific template ──
+    // ── Dispatch via send-email handler (in-process, no cross-function HTTP) ──
     const emailType = EMAIL_TYPE_MAP[profile.role] || 'user_invitation';
     const emailSubject = SUBJECT_MAP[profile.role] || "You're Invited to HealthSpan360";
 
-    const sendEmailUrl = siteUrl ? `${siteUrl}/.netlify/functions/send-email` : '';
-    if (!sendEmailUrl) {
-      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: 'SITE_URL is not configured' }) };
-    }
-
-    const emailRes = await fetch(sendEmailUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const sendEmailResult = await sendEmail.handler({
+      httpMethod: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         to: profile.email,
         email_type: emailType,
@@ -159,14 +187,10 @@ exports.handler = async (event) => {
       }),
     });
 
-    if (!emailRes.ok) {
-      const errBody = await emailRes.json().catch(() => ({}));
-      console.error('[resend-invite] send-email error:', errBody);
-      return {
-        statusCode: 502,
-        headers: corsHeaders,
-        body: JSON.stringify({ error: errBody.error || `send-email returned ${emailRes.status}` }),
-      };
+    if (!sendEmailResult || sendEmailResult.statusCode >= 400) {
+      let detail;
+      try { detail = JSON.parse(sendEmailResult?.body || '{}'); } catch (_) { detail = sendEmailResult?.body; }
+      return jsonError(502, 'send-email handler failed', detail);
     }
 
     return {
@@ -180,7 +204,6 @@ exports.handler = async (event) => {
       }),
     };
   } catch (err) {
-    console.error('[resend-invite] Unexpected error:', err);
-    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: err.message || 'Internal server error' }) };
+    return jsonError(500, 'Unexpected error', err?.message || String(err));
   }
 };
