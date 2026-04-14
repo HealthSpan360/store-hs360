@@ -43,6 +43,11 @@
   to = "/.netlify/functions/send-password-reset"
   status = 200
 
+[[redirects]]
+  from = "/api/resend-invite"
+  to = "/.netlify/functions/resend-invite"
+  status = 200
+
 # SPA fallback - must be last
 # IMPORTANT: Do not use force = true, as it would override function routes
 [[redirects]]

@@ -526,20 +526,17 @@ const DistributorManagement: React.FC = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No active session');
 
-      const response = await fetch(
-        `${ENV.SUPABASE_URL}/functions/v1/resend-invite`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId: distributor.profile_id,
-            siteUrl: window.location.origin,
-          }),
-        }
-      );
+      const response = await fetch('/api/resend-invite', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: distributor.profile_id,
+          siteUrl: window.location.origin,
+        }),
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
